@@ -1,7 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 import uvicorn
+import os
+from pathlib import Path
 
 from app.database.models import init_db
 from app.config import settings
@@ -26,19 +30,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Get the base directory
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Set up templates
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
 # Include API routes
 app.include_router(api_router, prefix="/api/v1")
 
-# Mount static files (for serving captured faces if needed)
-app.mount("/static", StaticFiles(directory=settings.UPLOAD_FOLDER), name="static")
+# Mount static files
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "templates" / "static")), name="static")
 
-@app.get("/")
-async def root():
-    """Root endpoint with API information"""
+# Serve captured faces
+app.mount("/captured_faces", StaticFiles(directory=settings.UPLOAD_FOLDER), name="captured_faces")
+
+# Create directories if they don't exist
+os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(BASE_DIR / "templates" / "static", exist_ok=True)
+
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+# Keep the API info endpoint for backward compatibility
+@app.get("/api")
+async def api_info():
     return {
-        "name": settings.APP_NAME,
-        "version": "1.0.0",
-        "docs": "/docs",
+        "message": "Welcome to the Face Recognition API",
+        "documentation": "/docs",
         "redoc": "/redoc"
     }
 
