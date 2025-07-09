@@ -3,10 +3,45 @@ from deepface import DeepFace
 import os
 import numpy as np
 from scipy.spatial.distance import cosine
+import time
 
 # Create a directory to store captured images if it doesn't exist
 if not os.path.exists("captured_faces"):
     os.makedirs("captured_faces")
+
+def detect_faces_opencv(frame):
+    # Convert to grayscale for face detection
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    # Load the pre-trained Haar Cascade classifier
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    
+    # Detect faces
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(30, 30),
+        flags=cv2.CASCADE_SCALE_IMAGE
+    )
+    
+    return faces
+
+def draw_face_rectangles(frame, faces):
+    # Draw rectangles around detected faces
+    for i, (x, y, w, h) in enumerate(faces):
+        # Draw rectangle around face
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        
+        # Add face ID
+        cv2.putText(frame, f"Face {i+1}", (x, y-10), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        
+        # Add face size
+        cv2.putText(frame, f"{w}x{h}", (x, y+h+20), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+    
+    return frame
 
 def capture_and_verify():
     cap = cv2.VideoCapture(0)
@@ -39,6 +74,22 @@ def capture_and_verify():
 
         # Create a copy of the frame for display
         display_frame = frame.copy()
+        
+        # Detect faces in real-time using OpenCV
+        try:
+            # Detect faces using Haar Cascade
+            faces = detect_faces_opencv(frame)
+            
+            # Draw face rectangles and info
+            display_frame = draw_face_rectangles(display_frame.copy(), faces)
+            
+            # Add face count
+            cv2.putText(display_frame, f"Faces: {len(faces)}", (10, 110), 
+                      cv2.FONT_HERSHEY_PLAIN, 1, (0, 255, 0), 1, cv2.LINE_AA)
+            
+        except Exception as e:
+            print(f"Face detection error: {e}")
+            # If there's an error, just show the frame without face detection
         
         # Add instructions to the frame
         if phase == "enrollment":
@@ -119,7 +170,7 @@ def capture_and_verify():
                 
                 # Add result to the frame
                 cv2.putText(display_frame, f"Result: {result_text} (Score: {distance:.4f})", 
-                           (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                           (20, 120), cv2.FONT_HERSHEY_PLAIN, 0.6, color, 1)
                 
                 print(f"Verification result: {result_text} (Distance: {distance:.4f}, Threshold: {threshold})")
                 
