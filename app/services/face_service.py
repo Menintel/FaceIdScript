@@ -107,55 +107,79 @@ class FaceService:
 
     def recognize_face(self, image_path: str) -> Dict[str, Any]:
         """Recognize a face in the given image"""
-        # Detect faces in the input image
-        face_objs = self.detect_faces(image_path)
-        
-        if not face_objs:
-            return {"status": "no_face", "message": "No faces detected in the image"}
-            
-        # Get all known face encodings from the database
-        known_encodings = self.db_service.get_all_face_encodings()
-        
-        if not known_encodings:
-            return {"status": "no_known_faces", "message": "No known faces in the database"}
-            
-        # Compare with each known face
-        best_match = None
-        min_distance = float('inf')
-        
-        for face in face_objs:
-            for known in known_encodings:
-                # Calculate distance between face encodings
-                distance = self._calculate_distance(
-                    np.array(face['embedding']),
-                    np.array(known['encoding'])
-                )
+        try:
+            # Read the image to verify it's valid
+            img = cv2.imread(image_path)
+            if img is None:
+                return {"status": "error", "message": "Invalid image file"}
                 
-                if distance < min_distance and distance <= self.threshold:
-                    min_distance = distance
-                    best_match = {
-                        'person_id': known['person_id'],
-                        'name': known['name'],
-                        'distance': distance,
-                        'face_location': face['facial_area']
+            # Detect faces in the input image
+            face_objs = self.detect_faces(image_path)
+            
+            if not face_objs:
+                return {"status": "no_face", "message": "No faces detected in the image"}
+                
+            # Get all known face encodings from the database
+            known_encodings = self.db_service.get_all_face_encodings()
+            
+            if not known_encodings:
+                return {"status": "no_known_faces", "message": "No known faces in the database"}
+                
+            # Compare with each known face
+            best_match = None
+            min_distance = float('inf')
+            
+            for face in face_objs:
+                # Skip if no face was actually detected (DeepFace might return empty results with enforce_detection=False)
+                if not face or 'embedding' not in face:
+                    continue
+                    
+                for known in known_encodings:
+                    if not known or 'encoding' not in known:
+                        continue
+                        
+                    # Calculate distance between face encodings
+                    distance = self._calculate_distance(
+                        np.array(face['embedding']),
+                        np.array(known['encoding'])
+                    )
+                    
+                    if distance < min_distance and distance <= self.threshold:
+                        min_distance = distance
+                        best_match = {
+                            'person_id': known['person_id'],
+                            'name': known['name'],
+                            'distance': distance,
+                            'face_location': face.get('facial_area', {})
+                        }
+            
+            if best_match:
+                confidence = 1 - (best_match['distance'] / self.threshold)
+                # Only consider it a match if confidence is above a certain threshold
+                if confidence > 0.6:  # 60% confidence threshold
+                    return {
+                        "status": "success",
+                        "recognized": True,
+                        "person": {
+                            "id": best_match['person_id'],
+                            "name": best_match['name'],
+                            "confidence": confidence
+                        },
+                        "face_location": best_match['face_location']
                     }
-        
-        if best_match:
-            return {
-                "status": "success",
-                "recognized": True,
-                "person": {
-                    "id": best_match['person_id'],
-                    "name": best_match['name'],
-                    "confidence": 1 - (best_match['distance'] / self.threshold)
-                },
-                "face_location": best_match['face_location']
-            }
-        else:
+            
+            # If we get here, no good match was found
             return {
                 "status": "success",
                 "recognized": False,
-                "message": "Face not recognized"
+                "message": "No matching face found in the database"
+            }
+            
+        except Exception as e:
+            print(f"Error in recognize_face: {str(e)}")
+            return {
+                "status": "error",
+                "message": f"Error processing image: {str(e)}"
             }
     
     def _calculate_distance(self, encoding1: np.ndarray, encoding2: np.ndarray) -> float:

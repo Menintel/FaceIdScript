@@ -288,19 +288,33 @@ async function recognizeFace() {
         console.log('Recognition result:', result);
         
         if (response.ok) {
-            if (result.status === 'success' && result.person) {
-                resultText.textContent = 'Match found!';
-                resultText.className = 'alert alert-success';
-                
-                // Display person info
-                document.getElementById('personName').textContent = result.person.name;
-                document.getElementById('personEmail').textContent = result.person.email || 'N/A';
-                document.getElementById('confidence').textContent = (result.confidence * 100).toFixed(2);
-                personInfo.style.display = 'block';
-                
+            if (result.status === 'success') {
+                if (result.recognized && result.person) {
+                    // Successful recognition with a match
+                    resultText.textContent = 'Match found!';
+                    resultText.className = 'alert alert-success';
+                    
+                    // Display person info
+                    document.getElementById('personName').textContent = result.person.name;
+                    document.getElementById('personEmail').textContent = result.person.email || 'N/A';
+                    document.getElementById('confidence').textContent = (result.person.confidence * 100).toFixed(2) + '%';
+                    personInfo.style.display = 'block';
+                } else {
+                    // No match found or not recognized
+                    resultText.textContent = result.message || 'No match found. Would you like to register this person?';
+                    resultText.className = 'alert alert-info';
+                    personInfo.style.display = 'none';
+                }
+            } else if (result.status === 'no_face') {
+                resultText.textContent = 'No face detected in the image. Please try again with a clearer image.';
+                resultText.className = 'alert alert-warning';
+                personInfo.style.display = 'none';
             } else {
-                resultText.textContent = 'No match found. Would you like to register this person?';
-                resultText.className = 'alert alert-info';
+                // Other error cases
+                const errorMsg = result.message || 'Unexpected response from server';
+                console.error('Recognition API error:', errorMsg);
+                resultText.textContent = `Error: ${errorMsg}`;
+                resultText.className = 'alert alert-danger';
                 personInfo.style.display = 'none';
             }
         } else {
